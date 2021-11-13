@@ -72,29 +72,23 @@ void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank,
     }
 
     // Sync processes allocation and input matrix a
-    int *proc_allocation;
-    proc_allocation = malloc(n * sizeof *proc_allocation);
 
     if (comm_rank == 0) {
         for (int proc = 1; proc < comm_size; proc++) {
             MPI_Send(a[0], n * (n + 1), MPI_FLOAT, proc, 0, comm); 
         }
-        for (int row = 0; row < n; row++)
-            proc_allocation[row] = row % comm_size;
-        for (int proc = 1; proc < comm_size; proc++)
-            MPI_Send(proc_allocation, n, MPI_INT, proc, 0, comm);
     }
     if (comm_rank !=0) {
         a = allocate_matrix(n);
         MPI_Recv(a[0], n * (n + 1), MPI_FLOAT, 0, 0, comm, &status);
-        MPI_Recv(proc_allocation, n, MPI_INT, 0, 0, comm, &status);
     }
 
     // Form upper triangular matrix, zeroing subsequent rows is distributed
     for (int v = 0; v < n - 1; v++) { // loop on pivots
         MPI_Barrier(comm);
+        // int start = ((v + 1) / comm_size) * comm_size + comm_rank;
         for (int i = v + 1; i < n; i++) { // loop on subsequent rows
-            if (proc_allocation[i] == comm_rank) {
+            if (i % comm_size == comm_rank) {
                 float ratio = a[i][v] / a[v][v];
                 for (int j = v; j < n + 1; j++) { // loop on the elements of each rows
                     a[i][j] -= (ratio * a[v][j]);
@@ -104,7 +98,7 @@ void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank,
         // Sync each pivot update
         if (comm_rank !=0) {
             for (int i = 0; i < n; i++) {
-                if (proc_allocation[i] == comm_rank) {
+                if (i % comm_size == comm_rank) {
                     MPI_Send(a[i], n + 1, MPI_FLOAT, 0, 0, comm);
                 }
             }
@@ -132,7 +126,7 @@ void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank,
         for (int i = n - 2; i >= 0; i--) {
             row_sum = 0;
             for(int proc = 1; proc < comm_size; proc++) {
-                MPI_Send(x, n, MPI_FLOAT, proc, 0, comm); 
+                MPI_Send(&x[i+1], 1, MPI_FLOAT, proc, 0, comm); 
                 MPI_Recv(&sum, 1, MPI_FLOAT, proc, 0, comm, &status);
                 row_sum += sum;
             }
@@ -147,7 +141,7 @@ void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank,
         float sum; 
         for (int i = n - 2; i >= 0; i--) {
             sum = 0;
-            MPI_Recv(x, n, MPI_FLOAT, 0, 0, comm, &status); 
+            MPI_Recv(&x[i+1], 1, MPI_FLOAT, 0, 0, comm, &status); 
             for(int j = i + 1 + comm_rank; j < n; j += comm_size) {
                 sum = sum + a[i][j] * x[j];
             }
