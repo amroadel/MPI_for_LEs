@@ -71,16 +71,10 @@ void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank,
         MPI_Recv(&n, 1, MPI_INT, 0, 0, comm, &status);
     }
 
-    // Processes allocation
-    int proc_size;
-    proc_size = n > comm_size;
-    if (n % comm_size > 0)
-        proc_size += 1;
-
+    // Sync processes allocation and input matrix a
     int *proc_allocation;
     proc_allocation = malloc(n * sizeof *proc_allocation);
 
-    // Sync processes allocation and input matrix a
     if (comm_rank == 0) {
         for (int proc = 1; proc < comm_size; proc++) {
             MPI_Send(a[0], n * (n + 1), MPI_FLOAT, proc, 0, comm); 
@@ -96,7 +90,7 @@ void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank,
         MPI_Recv(proc_allocation, n, MPI_INT, 0, 0, comm, &status);
     }
 
-    // Form upper triangular matrix
+    // Form upper triangular matrix, zeroing subsequent rows is distributed
     for (int v = 0; v < n - 1; v++) { // loop on pivots
         MPI_Barrier(comm);
         for (int i = v + 1; i < n; i++) { // loop on subsequent rows
@@ -130,16 +124,34 @@ void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank,
     }
 
 
-    // Back substitution
+    // Back substitution, calculating the sum for each row is distributed
     if (comm_rank ==0) {
-        float row_sum; 
+        float row_sum;
+        float sum;
         x[n - 1] = a[n - 1][n] / a[n - 1][n - 1];
         for (int i = n - 2; i >= 0; i--) {
             row_sum = 0;
-            for(int j = i + 1; j < n; j++) {
+            for(int proc = 1; proc < comm_size; proc++) {
+                MPI_Send(x, n, MPI_FLOAT, proc, 0, comm); 
+                MPI_Recv(&sum, 1, MPI_FLOAT, proc, 0, comm, &status);
+                row_sum += sum;
+            }
+            for(int j = i + 1; j < n; j += comm_size) {
                 row_sum = row_sum + a[i][j] * x[j];
             }
             x[i] = (a[i][n] - row_sum) / a[i][i];
+        }
+    }
+
+    if (comm_rank !=0) {
+        float sum; 
+        for (int i = n - 2; i >= 0; i--) {
+            sum = 0;
+            MPI_Recv(x, n, MPI_FLOAT, 0, 0, comm, &status); 
+            for(int j = i + 1 + comm_rank; j < n; j += comm_size) {
+                sum = sum + a[i][j] * x[j];
+            }
+            MPI_Send(&sum, 1, MPI_FLOAT, 0, 0, comm);
         }
     }
 }
