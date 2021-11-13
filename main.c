@@ -58,7 +58,8 @@ int main(int argc, char **argv) {
     }
     
     // gaussian_sequential(matrix, x, n_equations);
-    gaussian_parallel(matrix, x, n_equations, comm_size, comm_rank, MPI_COMM_WORLD);
+    // gaussian_parallel(matrix, x, n_equations, comm_size, comm_rank, MPI_COMM_WORLD);
+    gaussian_parallel_collective(matrix, x, n_equations, comm_size, comm_rank, MPI_COMM_WORLD);
 
     MPI_Bcast(&n_equations, 1, MPI_INT, 0, MPI_COMM_WORLD);
     // MPI_Bcast(matrix[0], n_equations * (n_equations + 1), MPI_FLOAT, 0, MPI_COMM_WORLD);
