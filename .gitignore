@@ -1,2 +1,4 @@
 mpich*
 *.txt
+*.o
+*.out

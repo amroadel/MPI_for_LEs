@@ -1,10 +1,11 @@
-#include<stdio.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "gaussian.h"
 
-int **read_matrix_from_file(char *file_name, int *n_equations) {
+float **read_matrix_from_file(char *file_name, int *n_equations) {
 
-    int **matrix;
+    float **matrix;
     FILE * input = fopen(file_name, "r");
     if ( !input ) {
         fprintf(stderr, "Error: Unable to open input file.\n");
@@ -39,7 +40,7 @@ int **read_matrix_from_file(char *file_name, int *n_equations) {
 
     for (i = 0; i < n_rows; i++) {
         for (j = 0; j < n_cols; j++) {
-            fscanf(input, "%d", &matrix[i][j]); 
+            fscanf(input, "%f", &matrix[i][j]); 
         }
     }
     fclose(input);
@@ -47,17 +48,29 @@ int **read_matrix_from_file(char *file_name, int *n_equations) {
 
 }
 
+void print_matrix(float **a, int n) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n + 1; j++) {
+            printf("%f ", a[i][j]);
+        }
+        printf("\n");
+    }
+}
+
 int main(int argc, char **argv) {
 
     int n_equations; 
-    int **matrix;
-    matrix = read_matrix_from_file(argv[1], &n_equations);
+    float **matrix;
+    float *x;
 
+    x = malloc(n_equations * sizeof *x);
+    matrix = read_matrix_from_file(argv[1], &n_equations);
+    
+    gaussian_sequential(matrix, x, n_equations);
+
+    // print_matrix(matrix, n_equations);
     for (int i = 0; i < n_equations; i++) {
-        for (int j = 0; j < n_equations + 1; j++) {
-            printf("%d ", matrix[i][j]); 
-        }
-        printf("\n");
+        printf("x%d = %f \n", i, x[i]);
     }
 
     free(matrix[0]);

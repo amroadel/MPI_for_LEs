@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <mpi.h>
+// #include <mpi.h>
 #include "gaussian.h"
 
 void gaussian_sequential(float **a, float *x, int n) {
@@ -26,17 +26,10 @@ void gaussian_sequential(float **a, float *x, int n) {
     }
 }
 
-void gaussian_parallel(float **a, float *x, int n);
-void gaussian_parallel_collective(float **a, float *x, int n);
+void gaussian_parallel(float **a, float *x, int n) {
 
-void print_matrix(float **a, int n) {
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n + 1; j++) {
-            printf("%f ", a[i][j]);
-        }
-        printf("\n");
-    }
 }
+void gaussian_parallel_collective(float **a, float *x, int n);
 
 // int main() {
 //     int n_rows = 3;
