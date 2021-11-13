@@ -178,20 +178,20 @@ void gaussian_parallel_collective(float **a, float *x, int n, int comm_size, int
                 for (int j = 0; j < n + 1; j++)
                     a[i][j] = 0;
         MPI_Allreduce(MPI_IN_PLACE, a[0], n * (n + 1), MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-        // if (comm_rank == rank) {
-        //     printf("matrix in rank %d\n", comm_rank);
-        //     print_matrix(a, n);
-        // }
     }
     
     if (comm_rank == 0) {
-        float row_sum; 
         x[n - 1] = a[n - 1][n] / a[n - 1][n - 1];
-        for (int i = n - 2; i >= 0; i--) {
-            row_sum = 0;
-            for(int j = i + 1; j < n; j++) {
-                row_sum = row_sum + a[i][j] * x[j];
-            }
+    }
+    float row_sum; 
+    for (int i = n - 2; i >= 0; i--) {
+        float sum = 0;
+        MPI_Bcast(&x[i+1], 1, MPI_FLOAT, 0, comm);
+        for(int j = i + 1 + comm_rank; j < n; j += comm_size) {
+            sum = sum + a[i][j] * x[j];
+        }
+        MPI_Reduce(&sum, &row_sum, 1, MPI_FLOAT, MPI_SUM, 0, comm);
+        if (comm_rank == 0) {
             x[i] = (a[i][n] - row_sum) / a[i][i];
         }
     }
