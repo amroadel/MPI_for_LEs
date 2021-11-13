@@ -2,3 +2,7 @@ mpich*
 *.txt
 *.o
 *.out
+*.py
+*.csv
+
+env/

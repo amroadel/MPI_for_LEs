@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <mpi.h>
 #include "gaussian.h"
 
 float **read_matrix_from_file(char *file_name, int *n_equations) {
@@ -19,27 +20,10 @@ float **read_matrix_from_file(char *file_name, int *n_equations) {
     int n_cols = *n_equations + 1; // for the augmented matrix
 
     // Allocate space for the augmented matrix rows
-    matrix = malloc(n_rows * sizeof *matrix);
-    if ( !matrix ) {
-        fprintf(stderr, "Error: malloc rows failed.\n");
-        exit(EXIT_FAILURE);
-    }
+    matrix = allocate_matrix(*n_equations);
 
-    // Allocate space for the augmented matrix cols
-    matrix[0] = malloc(n_rows * n_cols * sizeof *matrix[0]);
-    if ( !matrix ) {
-        fprintf(stderr, "Error: malloc cols failed.\n");
-        free(matrix);
-        exit(EXIT_FAILURE);
-    }
-
-    int i, j; 
-    for (i = 1; i < n_rows; i++){
-        matrix[i] = matrix[i - 1] + n_cols; //put it in 2D format (move cols)
-    }
-
-    for (i = 0; i < n_rows; i++) {
-        for (j = 0; j < n_cols; j++) {
+    for (int i = 0; i < n_rows; i++) {
+        for (int j = 0; j < n_cols; j++) {
             fscanf(input, "%f", &matrix[i][j]); 
         }
     }
@@ -48,14 +32,14 @@ float **read_matrix_from_file(char *file_name, int *n_equations) {
 
 }
 
-void print_matrix(float **a, int n) {
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n + 1; j++) {
-            printf("%f ", a[i][j]);
-        }
-        printf("\n");
-    }
-}
+// void print_matrix(float **a, int n) {
+//     for (int i = 0; i < n; i++) {
+//         for (int j = 0; j < n + 1; j++) {
+//             printf("%f ", a[i][j]);
+//         }
+//         printf("\n");
+//     }
+// }
 
 int main(int argc, char **argv) {
 
@@ -63,18 +47,33 @@ int main(int argc, char **argv) {
     float **matrix;
     float *x;
 
-    x = malloc(n_equations * sizeof *x);
-    matrix = read_matrix_from_file(argv[1], &n_equations);
+    int comm_size, comm_rank;
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &comm_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+    if (comm_rank == 0) {
+        matrix = read_matrix_from_file(argv[1], &n_equations);
+        x = malloc(n_equations * sizeof *x);
+    }
     
-    gaussian_sequential(matrix, x, n_equations);
+    // gaussian_sequential(matrix, x, n_equations);
+    gaussian_parallel(matrix, x, n_equations, comm_size, comm_rank, MPI_COMM_WORLD);
+
+    MPI_Bcast(&n_equations, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    // MPI_Bcast(matrix[0], n_equations * (n_equations + 1), MPI_FLOAT, 0, MPI_COMM_WORLD);
+    // gaussian_parallel_collective(matrix, x, n_equations, comm_size, comm_rank);
 
     // print_matrix(matrix, n_equations);
-    for (int i = 0; i < n_equations; i++) {
-        printf("x%d = %f \n", i, x[i]);
+
+    if (comm_rank == 0) {
+        for (int i = 0; i < n_equations; i++) {
+            printf("x%d = %f \n", i, x[i]);
+        }
     }
 
-    free(matrix[0]);
-    free(matrix);
-    
+    // free(matrix[0]);
+    // free(matrix);
+    MPI_Finalize();
     return 0;
 }

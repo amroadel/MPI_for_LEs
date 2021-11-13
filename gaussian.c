@@ -1,11 +1,43 @@
 #include <stdio.h>
 #include <stdlib.h>
-// #include <mpi.h>
 #include "gaussian.h"
 
-void gaussian_sequential(float **a, float *x, int n) {
+void print_matrix(float **a, int n) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n + 1; j++) {
+            printf("%f ", a[i][j]);
+        }
+        printf("\n");
+    }
+}
 
-    //Form Upper Triangular Matrix
+float **allocate_matrix(int n) {
+    float **matrix;
+    int n_rows = n;
+    int n_cols = n + 1; // for the augmented matrix
+
+    matrix = malloc(n_rows * sizeof *matrix);
+    if ( !matrix ) {
+        fprintf(stderr, "Error: malloc rows failed.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Allocate space for the augmented matrix cols
+    matrix[0] = malloc(n_rows * n_cols * sizeof *matrix[0]);
+    if ( !matrix ) {
+        fprintf(stderr, "Error: malloc cols failed.\n");
+        free(matrix);
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 1; i < n_rows; i++){
+        matrix[i] = matrix[i - 1] + n_cols; //put it in 2D format (move cols)
+    }
+    return matrix;
+}
+
+void gaussian_sequential(float **a, float *x, int n) {
+    // Form upper triangular matrix
     for (int v = 0; v < n - 1; v++) {
         for (int i = v + 1; i < n; i++) {
             float ratio = a[i][v] / a[v][v];
@@ -14,7 +46,7 @@ void gaussian_sequential(float **a, float *x, int n) {
             }
         }
     }
-    //Back Substitution
+    // Back substitution
     float row_sum; 
     x[n - 1] = a[n - 1][n] / a[n - 1][n - 1];
     for (int i = n - 2; i >= 0; i--) {
@@ -26,10 +58,125 @@ void gaussian_sequential(float **a, float *x, int n) {
     }
 }
 
-void gaussian_parallel(float **a, float *x, int n) {
+void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank, MPI_Comm comm) {
+    MPI_Status status;
+
+    // Sync number of equations
+    if (comm_rank == 0) {
+        for (int proc = 1; proc < comm_size; proc++) {
+            MPI_Send(&n, 1, MPI_INT, proc, 0, comm);
+        }
+    }
+    if (comm_rank !=0) {
+        MPI_Recv(&n, 1, MPI_INT, 0, 0, comm, &status);
+    }
+
+    // Processes allocation
+    int proc_size;
+    proc_size = n > comm_size;
+    if (n % comm_size > 0)
+        proc_size += 1;
+
+    int *proc_allocation;
+    proc_allocation = malloc(n * sizeof *proc_allocation);
+
+    // Sync processes allocation and input matrix a
+    if (comm_rank == 0) {
+        for (int proc = 1; proc < comm_size; proc++) {
+            MPI_Send(a[0], n * (n + 1), MPI_FLOAT, proc, 0, comm); 
+        }
+        for (int row = 0; row < n; row++)
+            proc_allocation[row] = row % comm_size;
+        for (int proc = 1; proc < comm_size; proc++)
+            MPI_Send(proc_allocation, n, MPI_INT, proc, 0, comm);
+    }
+    if (comm_rank !=0) {
+        a = allocate_matrix(n);
+        MPI_Recv(a[0], n * (n + 1), MPI_FLOAT, 0, 0, comm, &status);
+        MPI_Recv(proc_allocation, n, MPI_INT, 0, 0, comm, &status);
+    }
+
+    // Form upper triangular matrix
+    for (int v = 0; v < n - 1; v++) { // loop on pivots
+        MPI_Barrier(comm);
+        for (int i = v + 1; i < n; i++) { // loop on subsequent rows
+            if (proc_allocation[i] == comm_rank) {
+                float ratio = a[i][v] / a[v][v];
+                for (int j = v; j < n + 1; j++) { // loop on the elements of each rows
+                    a[i][j] -= (ratio * a[v][j]);
+                }
+            }
+        }
+        // Sync each pivot update
+        if (comm_rank !=0) {
+            for (int i = 0; i < n; i++) {
+                if (proc_allocation[i] == comm_rank) {
+                    MPI_Send(a[i], n + 1, MPI_FLOAT, 0, 0, comm);
+                }
+            }
+            MPI_Recv(a[0], n * (n + 1), MPI_FLOAT, 0, 0, comm, &status);
+        }
+        if (comm_rank ==0) {
+            for (int i = 0; i < n; i++) {
+                int proc = i % comm_size;
+                if (proc){
+                    MPI_Recv(a[i], n + 1, MPI_FLOAT, proc, 0, comm, &status);
+                }
+            }
+            for (int proc = 1; proc < comm_size; proc++) {
+                MPI_Send(a[0], n * (n + 1), MPI_FLOAT, proc, 0, comm); 
+            }
+        }
+    }
+
+
+    // Back substitution
+    if (comm_rank ==0) {
+        float row_sum; 
+        x[n - 1] = a[n - 1][n] / a[n - 1][n - 1];
+        for (int i = n - 2; i >= 0; i--) {
+            row_sum = 0;
+            for(int j = i + 1; j < n; j++) {
+                row_sum = row_sum + a[i][j] * x[j];
+            }
+            x[i] = (a[i][n] - row_sum) / a[i][i];
+        }
+    }
+}
+
+void gaussian_parallel_collective(float **a, float *x, int n, int comm_size, int comm_rank) {
+
+    if (comm_rank != 0) {
+        a = allocate_matrix(n);
+    }
+    int *proc_allocation;
+    proc_allocation = malloc(n * sizeof *proc_allocation);
+
+    if (comm_rank == 0) {
+        for (int row = 0; row < n; row++)
+            proc_allocation[row] = row % comm_size;
+    }
+    MPI_Bcast(proc_allocation, n , MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(a[0], n * (n + 1), MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+    // Form upper triangular matrix
+    for (int v = 0; v < n - 1; v++) {
+        for (int i = v + 1; i < n; i++) {
+            if (proc_allocation[i] == comm_rank) {
+                float ratio = a[i][v] / a[v][v];
+                for (int j = v; j < n + 1; j++) {
+                    a[i][j] -= (ratio * a[v][j]);
+                    printf("%f ", a[i][j]);
+                }
+                printf("\n");
+
+            }
+        }
+
+    }
+    
 
 }
-void gaussian_parallel_collective(float **a, float *x, int n);
 
 // int main() {
 //     int n_rows = 3;
