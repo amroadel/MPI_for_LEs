@@ -56,11 +56,13 @@ void gaussian_sequential(float **a, float *x, int n) {
         }
         x[i] = (a[i][n] - row_sum) / a[i][i];
     }
+    // free(a[0]);
+    // free(a);
 }
 
 void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank, MPI_Comm comm) {
     MPI_Status status;
-
+    double time_taken = MPI_Wtime();
     // Sync number of equations
     if (comm_rank == 0) {
         for (int proc = 1; proc < comm_size; proc++) {
@@ -148,9 +150,17 @@ void gaussian_parallel(float **a, float *x, int n, int comm_size, int comm_rank,
             MPI_Send(&sum, 1, MPI_FLOAT, 0, 0, comm);
         }
     }
+    time_taken = MPI_Wtime() - time_taken;
+
+    if (comm_rank == 0) {
+        printf("%f\n", time_taken);
+    }
+    // free(a[0]);
+    // free(a);
 }
 
 void gaussian_parallel_collective(float **a, float *x, int n, int comm_size, int comm_rank, MPI_Comm comm) {
+    double time_taken = MPI_Wtime();
     MPI_Bcast(&n, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
     // int rank = 0; //* for debugging
 
@@ -195,4 +205,11 @@ void gaussian_parallel_collective(float **a, float *x, int n, int comm_size, int
             x[i] = (a[i][n] - row_sum) / a[i][i];
         }
     }
+    time_taken = MPI_Wtime() - time_taken;
+
+    if (comm_rank == 0) {
+        printf("%f\n", time_taken);
+    }
+    // free(a[0]);
+    // free(a);
 }
