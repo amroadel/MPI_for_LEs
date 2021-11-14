@@ -4,5 +4,7 @@ mpich*
 *.out
 *.py
 *.csv
+main.c
+!input_file100.txt
 
 env/

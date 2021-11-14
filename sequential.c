@@ -59,8 +59,8 @@ int main(int argc, char **argv) {
     clock_t end = clock();
     time_spent += (double)(end - begin) / CLOCKS_PER_SEC;
 
-    // for (int i = 0; i < n_equations; i++) 
-    //     printf("x%d = %f \n", i, x[i]);
+    for (int i = 0; i < n_equations; i++) 
+        printf("x%d = %f \n", i, x[i]);
 
     printf("Sequential time is %f seconds\n", time_spent);
     free(matrix[0]);

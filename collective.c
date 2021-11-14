@@ -68,9 +68,9 @@ int main(int argc, char **argv) {
     gaussian_parallel_collective(matrix, x, n_equations, comm_size, comm_rank, MPI_COMM_WORLD);
 
     if (comm_rank == 0) {
-        // for (int i = 0; i < n_equations; i++) {
-        //     printf("x%d = %f \n", i, x[i]);
-        // }
+        for (int i = 0; i < n_equations; i++) {
+            printf("x%d = %f \n", i, x[i]);
+        }
     }
 
     // free(matrix[0]);
